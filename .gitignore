@@ -1,0 +1,54 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# --- Node / frontend ---
+node_modules/
+.pnp
+.pnp.js
+.yarn-integrity
+frontend/dist/
+frontend/.vite/
+frontend/node_modules/.cache/
+
+# --- environment / secrets (NEVER commit) ---
+.env
+backend/.env
+frontend/.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+
+# --- editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- logs ---
+*.log
+logs/
+
+# --- build outputs ---
+build/
+dist/
+
+# --- platform / infra ---
+.emergent/
+downloads/
+tmp/
+tests-cache/
+.env.*
+*.env
+credentials.json
+.credentials

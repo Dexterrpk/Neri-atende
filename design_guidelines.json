@@ -1,0 +1,212 @@
+{
+  "theme": "hybrid_light_with_rich_emerald_accents",
+  "archetype": "ORGANIC & PERFORMANCE PRO HYBRID (WhatsApp Emerald + Modern SaaS Bento)",
+  "colors": {
+    "primary": "#059669",
+    "primary_dark": "#047857",
+    "primary_light": "#10B981",
+    "accent": "#25D366",
+    "on_accent": "#FFFFFF",
+    "surfaces": [
+      {
+        "name": "page",
+        "kind": "solid",
+        "bg": "#F8FAFC",
+        "on_bg": "#0F172A",
+        "on_bg_muted": "#475569",
+        "roles": {
+          "link": "#059669",
+          "error": "#DC2626",
+          "success": "#059669",
+          "warning": "#D97706"
+        }
+      },
+      {
+        "name": "panel",
+        "kind": "solid",
+        "bg": "#FFFFFF",
+        "on_bg": "#0F172A",
+        "on_bg_muted": "#475569",
+        "roles": {
+          "link": "#059669",
+          "error": "#DC2626",
+          "success": "#059669",
+          "warning": "#D97706"
+        }
+      },
+      {
+        "name": "sidebar",
+        "kind": "solid",
+        "bg": "#0F172A",
+        "on_bg": "#F8FAFC",
+        "on_bg_muted": "#94A3B8",
+        "roles": {
+          "link": "#34D399",
+          "error": "#F87171",
+          "success": "#34D399",
+          "warning": "#FBBF24"
+        }
+      },
+      {
+        "name": "inverse",
+        "kind": "solid",
+        "bg": "#064E3B",
+        "on_bg": "#ECFDF5",
+        "on_bg_muted": "#A7F3D0",
+        "roles": {
+          "link": "#6EE7B7",
+          "error": "#FCA5A5",
+          "success": "#6EE7B7",
+          "warning": "#FDE68A"
+        }
+      },
+      {
+        "name": "chat_bubble_incoming",
+        "kind": "solid",
+        "bg": "#FFFFFF",
+        "on_bg": "#0F172A",
+        "on_bg_muted": "#64748B"
+      },
+      {
+        "name": "chat_bubble_outgoing_ai",
+        "kind": "solid",
+        "bg": "#DCF8C6",
+        "on_bg": "#064E3B",
+        "on_bg_muted": "#047857"
+      },
+      {
+        "name": "badge_success",
+        "kind": "solid",
+        "bg": "#D1FAE5",
+        "on_bg": "#065F46",
+        "on_bg_muted": "#047857"
+      },
+      {
+        "name": "badge_warning",
+        "kind": "solid",
+        "bg": "#FEF3C7",
+        "on_bg": "#92400E",
+        "on_bg_muted": "#78350F"
+      },
+      {
+        "name": "badge_danger",
+        "kind": "solid",
+        "bg": "#FEE2E2",
+        "on_bg": "#991B1B",
+        "on_bg_muted": "#7F1D1D"
+      },
+      {
+        "name": "hero",
+        "kind": "gradient",
+        "contrast_against": "#064E3B",
+        "guarantee": "scrim: linear-gradient(135deg, #064E3B 0%, #0F172A 100%) with 85% opacity overlay",
+        "on_bg": "#FFFFFF",
+        "on_bg_muted": "#D1FAE5",
+        "roles": {
+          "link": "#6EE7B7",
+          "error": "#FCA5A5",
+          "success": "#34D399",
+          "warning": "#FDE68A"
+        }
+      }
+    ]
+  },
+  "typography": {
+    "font_family_heading": "Outfit Variable, sans-serif",
+    "font_family_body": "DM Sans Variable, sans-serif",
+    "font_family_mono": "JetBrains Mono Variable, monospace",
+    "scale_px": {
+      "display": 56,
+      "h1": 42,
+      "h2": 32,
+      "h3": 22,
+      "body": 16,
+      "caption": 14
+    },
+    "rules": {
+      "headings_letter_spacing": "tracking-tight",
+      "overlines_letter_spacing": "tracking-[0.15em] uppercase text-xs font-bold",
+      "body_line_height": "leading-relaxed"
+    }
+  },
+  "entry_surfaces": {
+    "/": "split hero with emerald dark gradient card left, interactive live WhatsApp simulation widget right",
+    "/login": "branded split login with left emerald value prop panel and right clean white authentication card",
+    "/register": "branded split registration with step indicator left and simple owner onboarding form right",
+    "/onboarding": "guided 8-step progress bar card with celebratory milestone animations and simple business inputs",
+    "/app": "command center dashboard with AI live pulse status banner, 5 metric cards, quick action bento, and recent conversations",
+    "/app/configuracao": "multi-tab agent studio with completion checkmarks (Minha empresa, Personalidade, Produtos, Conhecimento, Atendimento, Vendas, Recuperação, Agendamento, WhatsApp, Integrações, Teste)",
+    "/app/conversas": "dual-pane messenger inbox with real-time status badges (Em atendimento, Aguardando cliente, Precisa de humano, Resolvido)",
+    "/app/recuperacao": "inactive client win-back campaign builder with smart triggers, message templates, and estimated ROI",
+    "/app/whatsapp": "QR code live pairing screen with step-by-step mobile guide and instant webhook connection indicator",
+    "/app/testar": "interactive WhatsApp sandbox playground with live prompt inspection, tool calls, and streaming responses",
+    "/admin": "superadmin overview with tenant matrix, AI token usage metrics, latency monitors, and audit stream"
+  },
+  "visual_enhancers": {
+    "crystal_glass": "backdrop-blur-xl bg-white/80 border border-slate-200/80 shadow-sm",
+    "card_style": "bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md transition-shadow duration-200",
+    "live_pulse_badge": "relative flex h-3 w-3 mr-2",
+    "footer_attribution": "Criado com excelência por Neri Infotech (https://neriinfotech.netlify.app)"
+  },
+  "media": {
+    "image_urls": {
+      "hero_customer_care": "https://images.unsplash.com/photo-1484863137850-59afcfe05386?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHw0fHxmcmllbmRseSUyMGN1c3RvbWVyJTIwc2VydmljZSUyMHNtaWxpbmd8ZW58MHx8fHwxNzg4NzgwNjEzfDA&ixlib=rb-4.1.0&q=85",
+      "hero_small_business_owner": "https://images.unsplash.com/photo-1507914372368-b2b085b925a1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHw0fHxzbWFsbCUyMGJ1c2luZXNzJTIwb3duZXIlMjByZXRhaWwlMjBjb2ZmZWV8ZW58MHx8fHwxNzg4NzgwNjEzfDA&ixlib=rb-4.1.0&q=85",
+      "team_support_desk": "https://images.unsplash.com/photo-1626863905121-3b0c0ed7b94c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwxfHxmcmllbmRseSUyMGN1c3RvbWVyJTIwc2VydmljZSUyMHNtaWxpbmd8ZW58MHx8fHwxNzg4NzgwNjEzfDA&ixlib=rb-4.1.0&q=85",
+      "retail_store_counter": "https://images.unsplash.com/photo-1556740767-414a9c4860c1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwzfHxzbWFsbCUyMGJ1c2luZXNzJTIwb3duZXIlMjByZXRhaWwlMjBjb2ZmZWV8ZW58MHx8fHwxNzg4NzgwNjEzfDA&ixlib=rb-4.1.0&q=85"
+    }
+  },
+  "component_hierarchy": {
+    "layout": {
+      "landing_navbar": "frontend/src/components/landing/LandingNavbar.tsx",
+      "landing_hero": "frontend/src/components/landing/LandingHero.tsx",
+      "landing_features": "frontend/src/components/landing/LandingFeatures.tsx",
+      "landing_pricing": "frontend/src/components/landing/LandingPricing.tsx",
+      "landing_footer": "frontend/src/components/landing/LandingFooter.tsx",
+      "app_sidebar": "frontend/src/components/layout/AppSidebar.tsx",
+      "app_header": "frontend/src/components/layout/AppHeader.tsx",
+      "admin_layout": "frontend/src/components/admin/AdminLayout.tsx"
+    },
+    "feature_modules": {
+      "onboarding_wizard": "frontend/src/components/onboarding/OnboardingWizard.tsx",
+      "dashboard_view": "frontend/src/components/dashboard/DashboardMetrics.tsx",
+      "ai_status_banner": "frontend/src/components/dashboard/AiStatusBanner.tsx",
+      "config_tabs": "frontend/src/components/config/AgentConfigTabs.tsx",
+      "knowledge_base": "frontend/src/components/knowledge/KnowledgeBaseManager.tsx",
+      "product_catalog": "frontend/src/components/catalog/ProductCatalogManager.tsx",
+      "conversations_inbox": "frontend/src/components/chat/ConversationsInbox.tsx",
+      "recovery_campaigns": "frontend/src/components/recovery/ClientRecoveryManager.tsx",
+      "whatsapp_connect": "frontend/src/components/whatsapp/WhatsAppConnectView.tsx",
+      "sandbox_tester": "frontend/src/components/sandbox/AiSandboxChat.tsx",
+      "admin_panel": "frontend/src/components/admin/AdminDashboard.tsx"
+    }
+  },
+  "motion": {
+    "page_transition": {
+      "initial": { "opacity": 0, "y": 8 },
+      "animate": { "opacity": 1, "y": 0 },
+      "transition": { "duration": 0.25, "ease": "easeOut" }
+    },
+    "interactive_hover": "transition-transform duration-150 active:scale-[0.98] hover:-translate-y-0.5",
+    "pulse_animation": "animate-pulse duration-1000"
+  },
+  "accessibility": {
+    "wcag_level": "WCAG AA",
+    "contrast_minimum": "4.5:1 on all body and muted text; 3.0:1 on large text and controls",
+    "data_testid_convention": "kebab-case with role prefix (e.g., data-testid=\"nav-login-button\", data-testid=\"onboarding-step-next\", data-testid=\"chat-send-button\", data-testid=\"whatsapp-status-badge\")",
+    "keyboard_nav": "Full focus-visible styling with ring-2 ring-emerald-500 ring-offset-2 on interactive nodes"
+  },
+  "instructions_to_main_agent": {
+    "language": "pt-BR (Português do Brasil) across all user-facing UI, alerts, and tooltips",
+    "tone": "Warm, accessible, jargon-free for non-technical small business owners (e.g. 'Ensine sua IA' instead of 'Knowledge Base', 'Conexão automática' instead of 'Webhook', 'Personalidade da IA' instead of 'System Prompt')",
+    "branding_mandate": "Prominently display footer credit 'Criado por Neri Infotech' with link to 'https://neriinfotech.netlify.app' in public pages and app footer",
+    "status_indicators": "Clear color-coded AI status: 🟢 Funcionando perfeitamente, ⚠️ Precisa de configuração, 🔴 Desconectado, ⚪ Em pausa",
+    "empty_states": "All views (empty catalog, no conversations yet, no knowledge uploaded) MUST feature friendly illustrations/icons, clear explanation in Portuguese, and a 1-click CTA to seed or create"
+  },
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "design_purity": "Avoid generic AI slop. Use rich emerald accents (#059669 / #10B981) paired with clean slate typography and crisp 1px borders.",
+    "spacing": "Maintain generous padding (p-6, p-8) on all container cards. Never crowd text against card borders.",
+    "icons": "Use lucide-react icons exclusively. Never use raw AI/robot emojis for system icons.",
+    "data_testid": "Every button, input, tab, metric card, and modal action MUST have a data-testid attribute for automated end-to-end verification."
+  }
+}
