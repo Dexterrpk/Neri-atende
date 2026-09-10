@@ -26,13 +26,20 @@ SUPPORTED_PROVIDERS = ("openai", "groq", "openrouter", "anthropic", "gemini")
 
 # Sensible default models per provider — used when the admin doesn't pin one.
 # The picker prefers cheap/fast variants; the admin can override anytime.
+# NOTE: providers sunset models frequently — probe_key auto-discovers a working
+# alternative when the pinned model returns a decommissioned/404 error.
 DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
-    "groq": "llama-3.1-8b-instant",
+    "groq": "groq/compound-mini",
     "openrouter": "openai/gpt-4o-mini",
     "anthropic": "claude-3-5-haiku-latest",
     "gemini": "gemini-1.5-flash",
 }
+
+# Substrings we want to AVOID when auto-picking a chat model from the provider
+# catalog (transcription, embeddings, guards, TTS, image, etc.).
+_NON_CHAT_HINTS = ("whisper", "embed", "guard", "orpheus", "tts", "audio",
+                   "image", "vision-only", "safeguard")
 
 # OpenAI-compatible base URLs (Chat Completions API surface).
 OPENAI_COMPATIBLE_BASE_URLS = {
@@ -274,17 +281,45 @@ async def _dispatch(provider: str, api_key: str, model: str,
 # --------------------------- test + models ----------------------------------
 
 async def probe_key(provider: str, api_key: str, model: str | None = None) -> tuple[bool, str, str]:
-    """Live-test a credential. Returns (ok, message, model_used). Never logs the key."""
+    """Live-test a credential. Returns (ok, message, model_used). Never logs the key.
+
+    When the pinned model returns a decommissioned/404-style error, we ask the
+    provider for its live catalog and retry with the first suitable chat model.
+    This keeps the flow resilient to provider model sunsets.
+    """
     if provider not in SUPPORTED_PROVIDERS:
         return False, f"Provedor {provider} não suportado.", ""
     mdl = model or DEFAULT_MODELS.get(provider, "")
+    prompt = "Responda apenas: OK"
     try:
-        reply = await _dispatch(provider, api_key, mdl, "Responda apenas: OK",
-                                "Responda apenas: OK", None, 16, 0.0)
-        if not reply:
-            return False, "Resposta vazia do provedor.", mdl
-        return True, "Conexão bem-sucedida.", mdl
+        reply = await _dispatch(provider, api_key, mdl, prompt, prompt, None, 16, 0.0)
+        if reply:
+            return True, "Conexão bem-sucedida.", mdl
+        raise RuntimeError("empty reply")
     except Exception as exc:
+        msg = str(exc).lower()
+        looks_like_model_gone = any(
+            s in msg for s in ("does not exist", "not found", "decommission",
+                               "deprecated", "unknown model", "model_not_found", "404")
+        )
+        # Auto-discovery fallback: fetch catalog and try a fresh chat model.
+        if looks_like_model_gone:
+            try:
+                catalog = await list_provider_models(provider, api_key)
+                for candidate in catalog:
+                    if not candidate or candidate == mdl:
+                        continue
+                    if any(h in candidate.lower() for h in _NON_CHAT_HINTS):
+                        continue
+                    try:
+                        reply = await _dispatch(provider, api_key, candidate, prompt,
+                                                prompt, None, 16, 0.0)
+                        if reply:
+                            return True, f"Conexão bem-sucedida (modelo detectado automaticamente: {candidate}).", candidate
+                    except Exception:
+                        continue
+            except Exception:
+                pass
         return False, f"Falha ao conectar ({type(exc).__name__}).", mdl
 
 

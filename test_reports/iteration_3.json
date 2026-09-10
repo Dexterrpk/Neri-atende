@@ -1,0 +1,27 @@
+{
+  "summary": "Groq real-key validation: DEFAULT_MODELS['groq']='groq/compound-mini' works and probe_key auto-discovery correctly falls back to a live chat model when a sunset model (llama-3.1-8b-instant) is explicitly requested. 8/8 new real-Groq tests pass and 18/18 pre-existing test_central_ia tests still green (26/26 total). Key never appears in response bodies, audit-logs, supervisor logs, or test source files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_groq_real.py",
+    "/app/backend/tests/test_central_ia.py",
+    "/app/test_reports/pytest/groq_real.xml",
+    "/app/test_reports/pytest/central_ia.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "lib/ai.py probe_key auto-discovery: iterates full catalog on each failed model and re-dispatches with 16 max_tokens — for very large catalogs this can be slow. Consider caching a per-provider 'known-good' model in platform_settings after first successful auto-discovery to avoid re-probing on every admin retest.",
+    "list_provider_models sorts models alphabetically; the first non-blacklisted candidate wins. This may pick a suboptimal (e.g. very small guard-family) model when the pinned one is decommissioned. Consider preferring a curated allow-list order (e.g. compound/70b/mini) before falling back to alphabetical.",
+    "probe_key returns model=<pinned original> in the ok-false path even after auto-discovery attempts fail — acceptable, but the caller has no way to know discovery was attempted. Minor observability nit."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_groq_real.py (new — 8 tests, real Groq key gated by GROQ_TEST_KEY env)"
+  ],
+  "success_rate": {"backend": "100% (26/26: 8 new + 18 regression)", "frontend": "not tested"},
+  "test_credentials": "admin@atendeia.com / AtendeIA#2026 ; demo@atendeia.com / Demo#2026forte ; GROQ_TEST_KEY exported to shell env at pytest invocation time only — NOT persisted.",
+  "seed_data_creation": "Ephemeral: one groq credential named 'Principal' with the real key, deleted by test_delete_groq_credential + module teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Real Groq end-to-end path validated. To rerun: export GROQ_TEST_KEY=<real-groq-key> && pytest /app/backend/tests/test_groq_real.py. Without the env var the module is fully skipped (safe default). test_central_ia.py is the always-runnable regression companion (no real key needed).",
+  "rca of the issue": "Root cause: Groq decommissioned llama-3.1-8b-instant, causing probe to 404. Fix in lib/ai.py (a) updated DEFAULT_MODELS['groq'] to 'groq/compound-mini' (currently active) and (b) added auto-discovery in probe_key that hits /models and retries with the first non-blacklisted candidate when the pinned model errors with 'not found'/'decommission'/'deprecated'/'404'/'unknown model'/'model_not_found'. Verified: default model returns ok=true with model='groq/compound-mini'; explicit llama-3.1-8b-instant returns ok=true with message containing 'detectado automaticamente' and a different model."
+}
