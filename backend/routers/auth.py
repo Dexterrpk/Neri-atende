@@ -1,6 +1,12 @@
 """Auth: register, login, logout, sessions, password reset, e-mail verification, team."""
 
 import uuid
+import asyncio
+import os
+import smtplib
+import ssl
+from email.message import EmailMessage
+from urllib.parse import urlencode
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -10,6 +16,7 @@ from lib.db import db
 from lib.deps import Principal, current_principal, require_role
 from lib.security import (
     SESSION_COOKIE,
+    decrypt_secret,
     cookie_kwargs,
     hash_password,
     new_token,
@@ -226,6 +233,36 @@ async def revoke_session(session_id: str, request: Request, principal: Principal
     return OkOut(message="Sessão revogada")
 
 
+async def _send_account_email(email: str, token: str, purpose: str) -> None:
+    settings = {}
+    for name in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM", "SMTP_PORT"):
+        doc = await db.platform_settings.find_one({"key": name})
+        settings[name] = (decrypt_secret(doc["encrypted"]) if doc and doc.get("encrypted") else None) or os.environ.get(name, "")
+    if not settings["SMTP_HOST"]:
+        raise HTTPException(status_code=503, detail="Envio de e-mail indisponível. Entre em contato com o administrador.")
+    route = "/redefinir-senha" if purpose == "password" else "/verificar-email"
+    url = os.environ.get("PUBLIC_APP_URL", "http://localhost").rstrip("/") + route + "?" + urlencode({"token": token})
+    message = EmailMessage()
+    message["From"] = settings["SMTP_FROM"] or settings["SMTP_USER"]
+    message["To"] = email
+    message["Subject"] = "Atende IA: redefinir senha" if purpose == "password" else "Atende IA: confirmar e-mail"
+    message.set_content(f"Abra o link para continuar: {url}\n\nO link expira em duas horas. Se não solicitou esta ação, ignore este e-mail.")
+
+    def send():
+        port = int(settings["SMTP_PORT"] or 587)
+        if port == 465:
+            server = smtplib.SMTP_SSL(settings["SMTP_HOST"], port, timeout=15, context=ssl.create_default_context())
+        else:
+            server = smtplib.SMTP(settings["SMTP_HOST"], port, timeout=15)
+        with server:
+            if port != 465:
+                server.starttls(context=ssl.create_default_context())
+            if settings["SMTP_USER"]:
+                server.login(settings["SMTP_USER"], settings["SMTP_PASSWORD"])
+            server.send_message(message)
+    await asyncio.to_thread(send)
+
+
 @router.post("/forgot-password", response_model=OkOut)
 async def forgot_password(payload: ForgotPasswordInput, request: Request):
     email = payload.email.lower().strip()
@@ -239,6 +276,7 @@ async def forgot_password(payload: ForgotPasswordInput, request: Request):
         await db.password_resets.insert_one(
             {
                 "token_hash": token_fingerprint(token),
+                "purpose": "password",
                 "user_id": user["id"],
                 "created_at": _now(),
                 "expires_at": _now() + timedelta(hours=2),
@@ -246,13 +284,13 @@ async def forgot_password(payload: ForgotPasswordInput, request: Request):
         )
         await audit.log("auth.password_reset_requested", company_id=user["company_id"],
                         user_email=email, request=request)
-        # No e-mail provider configured yet → the link is not invented, it is returned
-        # only in the audit-safe channel below (see INTEGRATIONS.md, SMTP section).
-        import logging
-
-        logging.getLogger(__name__).info(
-            "password reset token issued for user %s (delivery pending SMTP configuration)", user["id"]
-        )
+        try:
+            await _send_account_email(email, token, "password")
+        except Exception:
+            await db.password_resets.delete_one({"token_hash": token_fingerprint(token)})
+            # Same response for known and unknown addresses; never expose account existence.
+            import logging
+            logging.getLogger(__name__).warning("Password reset email delivery unavailable")
         return OkOut(message="Se este e-mail estiver cadastrado, enviaremos as instruções de redefinição.",
                      ok=True)
     return OkOut(message="Se este e-mail estiver cadastrado, enviaremos as instruções de redefinição.")
@@ -260,7 +298,8 @@ async def forgot_password(payload: ForgotPasswordInput, request: Request):
 
 @router.post("/reset-password", response_model=OkOut)
 async def reset_password(payload: ResetPasswordInput, request: Request):
-    record = await db.password_resets.find_one({"token_hash": token_fingerprint(payload.token)})
+    record = await db.password_resets.find_one_and_delete({
+        "token_hash": token_fingerprint(payload.token), "purpose": {"$ne": "email"}, "expires_at": {"$gte": _now()}})
     if not record:
         raise HTTPException(status_code=400, detail="Link inválido ou expirado")
     if record["expires_at"].replace(tzinfo=timezone.utc) < _now():
@@ -291,11 +330,31 @@ async def change_password(payload: ChangePasswordInput, request: Request,
 
 @router.post("/verify-email", response_model=OkOut)
 async def verify_email(request: Request, principal: Principal = Depends(current_principal)):
-    """Self-confirmation endpoint. Real e-mail delivery requires SMTP (see INTEGRATIONS.md)."""
-    await db.users.update_one({"id": principal.user["id"]}, {"$set": {"email_verified": True}})
-    await audit.log("auth.email_verified", company_id=principal.company_id,
-                    user_email=principal.user["email"], request=request)
+    if rate_limit_exceeded(f"verify:{principal.user['id']}", 5, 3600):
+        raise HTTPException(status_code=429, detail="Aguarde antes de solicitar outro e-mail.")
+    token = new_token()
+    await db.password_resets.insert_one({"token_hash": token_fingerprint(token), "purpose": "email",
+        "user_id": principal.user["id"], "created_at": _now(), "expires_at": _now() + timedelta(hours=2)})
+    try:
+        await _send_account_email(principal.user["email"], token, "email")
+    except Exception:
+        await db.password_resets.delete_one({"token_hash": token_fingerprint(token)})
+        raise HTTPException(status_code=503, detail="Não foi possível enviar o e-mail de confirmação.")
+    return OkOut(message="Abra o link enviado para confirmar seu e-mail.")
+
+
+@router.post("/verify-email/confirm", response_model=OkOut)
+async def confirm_email(payload: dict):
+    token = payload.get("token")
+    if not isinstance(token, str) or len(token) < 10:
+        raise HTTPException(status_code=422, detail="Token inválido")
+    record = await db.password_resets.find_one_and_delete({"token_hash": token_fingerprint(token),
+        "purpose": "email", "expires_at": {"$gte": _now()}})
+    if not record:
+        raise HTTPException(status_code=400, detail="Link inválido ou expirado")
+    await db.users.update_one({"id": record["user_id"]}, {"$set": {"email_verified": True}})
     return OkOut(message="E-mail confirmado")
+
 
 
 # ---------- team management (tenant-scoped) ----------

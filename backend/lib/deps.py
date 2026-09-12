@@ -37,6 +37,7 @@ class Principal:
         q = {"company_id": self.company_id}
         if extra:
             q.update(extra)
+        q["company_id"] = self.company_id
         return q
 
 

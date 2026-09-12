@@ -1,9 +1,9 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppShell from "@/components/layout/AppShell";
 import { Toaster } from "@/components/ui/sonner";
 import Admin from "@/pages/Admin";
-import { ForgotPassword, Login, Register } from "@/pages/Auth";
+import { AccountToken, ForgotPassword, Login, Register } from "@/pages/Auth";
 import Catalog from "@/pages/Catalog";
 import Config from "@/pages/Config";
 import Conversations from "@/pages/Conversations";
@@ -28,6 +28,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/cadastro" element={<Register />} />
         <Route path="/esqueci-senha" element={<ForgotPassword />} />
+        <Route path="/redefinir-senha" element={<AccountToken />} />
+        <Route path="/verificar-email" element={<AccountToken verify />} />
         <Route path="/onboarding" element={<Onboarding />} />
 
         <Route path="/app" element={<AppShell><Dashboard /></AppShell>} />
@@ -42,6 +44,9 @@ export default function App() {
         <Route path="/app/whatsapp" element={<AppShell><WhatsApp /></AppShell>} />
         <Route path="/app/uso" element={<AppShell><UsageAndTeam /></AppShell>} />
 
+        <Route path="/configurações" element={<Navigate to="/app/configuracao" replace />} />
+        <Route path="/configuracoes" element={<Navigate to="/app/configuracao" replace />} />
+        <Route path="/app/configuracoes" element={<Navigate to="/app/configuracao" replace />} />
         <Route path="/admin" element={<Admin />} />
 
         <Route path="*" element={<NotFound />} />

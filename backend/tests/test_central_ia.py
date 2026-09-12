@@ -7,9 +7,9 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8001")
 API = f"{BACKEND_URL}/api"
 
 ADMIN_EMAIL = "admin@atendeia.com"
-ADMIN_PASS = "AtendeIA#2026"
+ADMIN_PASS = os.environ.get("PLATFORM_ADMIN_PASSWORD", "")
 DEMO_EMAIL = "demo@atendeia.com"
-DEMO_PASS = "Demo#2026forte"
+DEMO_PASS = os.environ.get("DEMO_OWNER_PASSWORD", "")
 
 INVALID_GROQ_KEY = "gsk_invalid_test_0000000000"
 
@@ -28,18 +28,13 @@ def _login(email, password):
 @pytest.fixture(scope="module")
 def admin_client():
     c = _login(ADMIN_EMAIL, ADMIN_PASS)
-    # cleanup any prior test credentials
-    try:
-        for cred in c.get("/admin/ai/credentials").json():
-            c.delete(f"/admin/ai/credentials/{cred['id']}")
-    except Exception:
-        pass
+    # These tests require a disposable backend. Never delete pre-existing credentials.
+    existing = c.get("/admin/ai/credentials")
+    assert existing.status_code == 200 and existing.json() == [], "Use a clean, isolated test database"
     yield c
-    try:
-        for cred in c.get("/admin/ai/credentials").json():
-            c.delete(f"/admin/ai/credentials/{cred['id']}")
-    except Exception:
-        pass
+    cid = getattr(pytest, "cred_id", None) or getattr(pytest, "groq_cred_id", None)
+    if cid:
+        c.delete(f"/admin/ai/credentials/{cid}")
     c.close()
 
 

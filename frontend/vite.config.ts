@@ -1,10 +1,12 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 // Supervisor exports DISABLE_HOT_RELOAD=true when the platform sets ENABLE_RELOAD=false.
 const hotReloadDisabled = process.env.DISABLE_HOT_RELOAD === "true";
+const projectDir = fileURLToPath(new URL(".", import.meta.url));
 
 // Pod inotify quota is node-shared and routinely exhausted; native fs.watch EMFILEs at
 // boot. Polling is the load-bearing default (set before Vite evaluates the config).
@@ -18,10 +20,10 @@ export default defineConfig(async () => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: [
-        { find: "@", replacement: path.resolve(__dirname, "./src") },
+        { find: "@", replacement: path.resolve(projectDir, "./src") },
         // lucide 1.x dropped brand logos; src/lib/lucide-react.tsx restores them on top of the real package.
-        { find: /^lucide-react$/, replacement: path.resolve(__dirname, "./src/lib/lucide-react.tsx") },
-        { find: "lucide-react-upstream", replacement: path.resolve(__dirname, "./node_modules/lucide-react") },
+        { find: /^lucide-react$/, replacement: path.resolve(projectDir, "./src/lib/lucide-react.tsx") },
+        { find: "lucide-react-upstream", replacement: path.resolve(projectDir, "./node_modules/lucide-react") },
       ],
     },
     // Every shipped dep, pre-bundled up front. Vite discovers deps lazily, so the first
@@ -59,14 +61,13 @@ export default defineConfig(async () => {
     server: {
       host: true,
       port: 3000,
-      allowedHosts: true,
-      cors: true,
+      allowedHosts: ["localhost"],
       hmr: hotReloadDisabled ? false : { overlay: true },
       watch: hotReloadDisabled ? null : { usePolling: true, interval: 300 },
       // Relative /api/* is proxied to FastAPI in dev.
       proxy: {
         "/api": {
-          target: "http://localhost:8001",
+          target: process.env.BACKEND_URL || "http://localhost:8001",
           changeOrigin: true,
         },
       },

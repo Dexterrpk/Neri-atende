@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from lib import ai, audit, whatsapp
 from lib.db import db
@@ -69,14 +71,18 @@ async def list_messages(conversation_id: str, principal: Principal = Depends(cur
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
     docs = await db.messages.find(
         {"company_id": principal.company_id, "conversation_id": conversation_id}
-    ).sort("created_at", 1).to_list(limit)
-    return [Message(**d) for d in docs]
+    ).sort("created_at", -1).to_list(limit)
+    return [Message(**d) for d in reversed(docs)]
 
 
 async def _append_message(company_id: str, conversation_id: str, role: str, content: str,
-                          author: str = "", external_id: str | None = None) -> Message:
+                          author: str = "", external_id: str | None = None,
+                          created_at: datetime | None = None, delivery_status: str = "recorded") -> Message:
     msg = Message(company_id=company_id, conversation_id=conversation_id, role=role,
-                  content=content, author=author, external_id=external_id)
+                  content=content, author=author, external_id=external_id,
+                  direction="incoming" if role == "customer" else "outgoing",
+                  delivery_status="received" if role == "customer" else delivery_status,
+                  created_at=created_at or _now())
     await db.messages.insert_one(msg.model_dump())
     await db.conversations.update_one(
         {"id": conversation_id, "company_id": company_id},
@@ -86,9 +92,9 @@ async def _append_message(company_id: str, conversation_id: str, role: str, cont
 
 
 async def ensure_conversation(company_id: str, customer: dict) -> dict:
-    conv = await db.conversations.find_one(
-        {"company_id": company_id, "customer_id": customer["id"], "status": {"$ne": "resolvido"}}
-    )
+    query = {"company_id": company_id, "customer_id": customer["id"],
+             "status": {"$in": ["novo", "em_atendimento", "aguardando_cliente", "precisa_humano"]}}
+    conv = await db.conversations.find_one(query)
     if conv:
         return conv
     new = Conversation(
@@ -97,20 +103,42 @@ async def ensure_conversation(company_id: str, customer: dict) -> dict:
         customer_name=customer.get("name", ""),
         customer_phone=customer.get("phone", ""),
     )
-    await db.conversations.insert_one(new.model_dump())
-    return new.model_dump()
+    try:
+        return await db.conversations.find_one_and_update(
+            query, {"$setOnInsert": new.model_dump()}, upsert=True, return_document=ReturnDocument.AFTER)
+    except DuplicateKeyError:
+        conv = await db.conversations.find_one(query)
+        if conv:
+            return conv
+        raise
 
 
-async def run_ai_reply(company: dict, config: dict, conversation: dict, incoming: str) -> tuple[str, bool]:
+async def deliver_message(company_id: str, conv: dict, role: str, content: str, author: str) -> Message:
+    msg = await _append_message(company_id, conv["id"], role, content, author=author, delivery_status="pending")
+    sent, detail = await whatsapp.send_message(company_id, conv["customer_phone"], content)
+    msg.delivery_status = "accepted" if sent else "failed"
+    msg.delivery_error = "" if sent else detail
+    await db.messages.update_one({"company_id": company_id, "id": msg.id},
+                                 {"$set": {"delivery_status": msg.delivery_status, "delivery_error": msg.delivery_error}})
+    if not sent:
+        code = 422 if "inválido" in detail else 409 if "conectado" in detail or "440" in detail else 502
+        raise HTTPException(status_code=code, detail=detail)
+    return msg
+
+
+async def run_ai_reply(company: dict, config: dict, conversation: dict, incoming: str, allow_mock: bool = False) -> tuple[str, bool]:
     history = await db.messages.find(
         {"company_id": company["id"], "conversation_id": conversation["id"]}
-    ).sort("created_at", 1).to_list(30)
+    ).sort("created_at", -1).to_list(30)
+    history.reverse()
     prompt, _ = await build_system_prompt(company, config)
     reply, _provider, _model = await ai.generate(
         prompt, incoming,
         history=[{"role": m["role"], "content": m["content"]} for m in history[:-1]],
         company_id=company["id"], session_id=f"conv-{conversation['id']}", kind="reply",
     )
+    if _provider == "test" and not allow_mock:
+        raise ai.AiUnavailable("Nenhum provedor de IA disponível")
     needs_human = HANDOFF_MARK in reply
     return reply.replace(HANDOFF_MARK, "").strip(), needs_human
 
@@ -127,15 +155,10 @@ async def agent_reply(conversation_id: str, payload: SendMessageInput, request: 
         principal.tenant({"id": conversation_id}),
         {"$set": {"ai_paused": True, "assignee": principal.user["name"], "status": "em_atendimento"}},
     )
-    msg = await _append_message(principal.company_id, conversation_id, "human",
-                                payload.content, author=principal.user["name"])
-    sent, detail = await whatsapp.send_message(principal.company_id, conv["customer_phone"], payload.content)
+    msg = await deliver_message(principal.company_id, conv, "human", payload.content, principal.user["name"])
     await audit.log("inbox.human_reply", company_id=principal.company_id,
                     company_name=principal.company["name"], user_email=principal.user["email"],
-                    detail=f"conversa {conversation_id} | envio: {detail}", request=request)
-    if not sent:
-        # message is stored either way so nothing is lost; the UI surfaces the delivery state
-        pass
+                    detail=f"conversa {conversation_id} | envio aceito", request=request)
     return msg
 
 
@@ -157,7 +180,7 @@ async def simulate_customer(conversation_id: str, payload: SendMessageInput,
         return out
 
     config = await load_config(principal.company_id)
-    reply, needs_human = await run_ai_reply(principal.company, config, conv, payload.content)
+    reply, needs_human = await run_ai_reply(principal.company, config, conv, payload.content, allow_mock=True)
     out.append(await _append_message(principal.company_id, conversation_id, "ai", reply,
                                      author=config.get("ai_name", "IA")))
     await db.conversations.update_one(
@@ -348,16 +371,15 @@ async def recovery_send(customer_id: str, payload: SendMessageInput, request: Re
         raise HTTPException(status_code=429, detail="Limite diário de mensagens de recuperação atingido")
 
     conv = await ensure_conversation(principal.company_id, customer)
-    await _append_message(principal.company_id, conv["id"], "human", payload.content, author="Recuperação")
+    await deliver_message(principal.company_id, conv, "human", payload.content, "Recuperação")
     await db.conversations.update_one(
         {"id": conv["id"], "company_id": principal.company_id},
         {"$addToSet": {"tags": "recuperacao"}, "$set": {"opportunity": True, "status": "aguardando_cliente"}},
     )
-    sent, detail = await whatsapp.send_message(principal.company_id, customer["phone"], payload.content)
     await audit.log("recovery.message_sent", company_id=principal.company_id,
                     company_name=principal.company["name"], user_email=principal.user["email"],
-                    detail=f"cliente {customer_id} | {detail}", request=request)
-    return OkOut(ok=sent, message="Mensagem enviada" if sent else f"Registrada, mas não enviada: {detail}")
+                    detail=f"cliente {customer_id} | envio aceito", request=request)
+    return OkOut(message="Mensagem aceita pelo WhatsApp")
 
 
 @router.post("/recovery/mark-recovered/{conversation_id}", response_model=OkOut)

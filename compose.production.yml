@@ -1,0 +1,27 @@
+# Use junto com docker-compose.yml; configure o .env conforme DEPLOY.md.
+services:
+  backend:
+    environment:
+      APP_ENV: production
+      PUBLIC_APP_URL: https://${APP_DOMAIN:?Defina APP_DOMAIN}
+      CORS_ORIGINS: https://${APP_DOMAIN:?Defina APP_DOMAIN}
+  gateway:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Defina APP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+volumes:
+  caddy_data:
+  caddy_config:

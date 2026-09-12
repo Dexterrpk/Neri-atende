@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand("ping")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MONGO_URL: mongodb://localhost:27017
+      DB_NAME: atende_ia_test_ci
+      APP_ENV: test
+      CORS_ORIGINS: http://localhost:3000
+      PUBLIC_APP_URL: http://localhost:3000
+      PLATFORM_ADMIN_EMAIL: admin@atendeia.com
+      PLATFORM_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+      DEMO_OWNER_EMAIL: demo@atendeia.com
+      DEMO_OWNER_PASSWORD: ${{ secrets.CI_DEMO_PASSWORD }}
+      SEED_DEMO: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Generate isolated test passwords
+        run: |
+          echo "APP_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "PLATFORM_ADMIN_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "DEMO_OWNER_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+      - name: Seed test database
+        working-directory: backend
+        run: python seed.py
+      - name: Start backend
+        working-directory: backend
+        run: |
+          nohup uvicorn server:app --host 127.0.0.1 --port 8001 > /tmp/atende-backend.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8001/api/health && break
+            sleep 1
+          done
+      - name: Run backend tests
+        working-directory: backend
+        run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+      - name: TypeScript tests
+        working-directory: frontend
+        run: yarn test
+      - name: Typecheck
+        working-directory: frontend
+        run: yarn typecheck
+      - name: Lint
+        working-directory: frontend
+        run: yarn lint
+      - name: Build
+        working-directory: frontend
+        run: yarn build
+
+  whatsapp-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: whatsapp-web/package-lock.json
+      - run: npm ci
+        working-directory: whatsapp-web
+      - run: npm test
+        working-directory: whatsapp-web

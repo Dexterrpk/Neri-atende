@@ -147,6 +147,9 @@ export interface Message {
   author: string;
   content: string;
   external_id: string | null;
+  direction: string;
+  delivery_status: string;
+  delivery_error: string;
   created_at: string;
 }
 
@@ -210,6 +213,10 @@ export interface WhatsAppStatus {
   last_error: string;
   webhook_url: string;
   token_configured: boolean;
+  web_status: string;
+  web_qr: string;
+  web_pairing_code: string;
+  web_last_error: string;
   missing: string[];
 }
 

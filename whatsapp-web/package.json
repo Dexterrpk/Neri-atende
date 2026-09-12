@@ -1,0 +1,12 @@
+{
+  "name": "atende-ia-whatsapp-web",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node server.mjs", "test": "node --test"},
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "proper-lockfile": "4.1.2",
+    "pino": "^9.7.0",
+    "qrcode": "^1.5.4"
+  }
+}

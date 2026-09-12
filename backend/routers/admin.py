@@ -32,6 +32,8 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 # Every configurable platform secret. `hint` is user-facing guidance, never a value.
 SECRET_CATALOG = [
     ("AI_API_KEY", "Chave do serviço de IA", "IA", "Obtida no painel do provedor de IA escolhido"),
+    ("SMTP_FROM", "Remetente de e-mail", "E-mail", "Ex.: atendimento@suaempresa.com"),
+    ("SMTP_PORT", "Porta SMTP", "E-mail", "587 para STARTTLS ou 465 para TLS"),
     ("SMTP_HOST", "Servidor de e-mail", "E-mail", "Ex.: smtp.seuprovedor.com"),
     ("SMTP_USER", "Usuário de e-mail", "E-mail", "Usuário da conta SMTP"),
     ("SMTP_PASSWORD", "Senha de e-mail", "E-mail", "Senha ou token da conta SMTP"),
@@ -288,7 +290,8 @@ async def test_stored_ai_credential(cred_id: str,
     ok, msg, model = await ai.probe_key(doc["provider"], key, doc.get("model"))
     await db.ai_credentials.update_one(
         {"id": cred_id},
-        {"$set": {"last_ok_at": _now() if ok else doc.get("last_ok_at"),
+        {"$set": {"model": model if ok else doc.get("model"),
+                  "last_ok_at": _now() if ok else doc.get("last_ok_at"),
                   "last_error": "" if ok else msg}},
     )
     return {"ok": ok, "message": msg, "model": model}
@@ -369,6 +372,14 @@ async def platform_health(_: Principal = Depends(require_platform_admin)):
 
     since = _now().replace(hour=0, minute=0, second=0, microsecond=0)
     inbound = await db.messages.count_documents({"role": "customer", "created_at": {"$gte": since}})
+    meta_secret = bool(os.environ.get("META_APP_SECRET", "").strip())
+    items.append(HealthItemOut(
+        key="meta_webhook_security",
+        label="Segurança do webhook Meta",
+        status="ok" if meta_secret else "error" if official and os.environ.get("APP_ENV", "development").lower() == "production" else "not_configured",
+        detail="X-Hub-Signature-256 ativo" if meta_secret else "Defina META_APP_SECRET antes de usar WhatsApp oficial em produção",
+    ))
+
     items.append(HealthItemOut(key="webhooks", label="Conexão automática",
                                status="ok" if inbound else "warn" if official else "not_configured",
                                detail=f"{inbound} mensagem(ns) recebida(s) hoje"))

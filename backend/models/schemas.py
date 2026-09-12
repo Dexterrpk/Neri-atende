@@ -255,6 +255,9 @@ class Message(BaseModel):
     author: str = ""
     content: str
     external_id: str | None = None
+    direction: str = "outgoing"
+    delivery_status: str = "recorded"
+    delivery_error: str = ""
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -335,6 +338,10 @@ class WhatsAppStatusOut(BaseModel):
     last_error: str = ""
     webhook_url: str = ""
     token_configured: bool = False
+    web_status: str = "disconnected"
+    web_qr: str = ""
+    web_pairing_code: str = ""
+    web_last_error: str = ""
     missing: list[str] = Field(default_factory=list)
 
 

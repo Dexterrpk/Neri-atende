@@ -21,7 +21,8 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 from lib.db import client, db, ensure_indexes  # noqa: E402
-from lib.security import IS_PRODUCTION, SECURITY_HEADERS, APP_SECRET  # noqa: E402
+from lib.ai import AiUnavailable  # noqa: E402
+from lib.security import IS_PRODUCTION, SECURITY_HEADERS, APP_SECRET, INSECURE_APP_SECRET, SESSION_COOKIE  # noqa: E402
 from routers import admin, auth, inbox, whatsapp_router, workspace  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -30,13 +31,9 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if IS_PRODUCTION and APP_SECRET == "dev-only-insecure-secret-change-me":
-        logger.error(
-            "APP_SECRET is not configured in production. Set APP_SECRET in the environment. "
-            "Refusing to start with the insecure default."
-        )
-        raise RuntimeError("APP_SECRET must be set in production")
-    app.state.index_task = asyncio.create_task(ensure_indexes())
+    if IS_PRODUCTION and (APP_SECRET == INSECURE_APP_SECRET or len(APP_SECRET) < 32):
+        raise RuntimeError("APP_SECRET must be set to at least 32 characters in production")
+    await ensure_indexes()
     yield
     client.close()
 
@@ -74,6 +71,11 @@ api_router.include_router(admin.router)
 
 
 # ---------- error handling: never leak a stack trace to the client ----------
+@app.exception_handler(AiUnavailable)
+async def ai_unavailable(request: Request, exc: AiUnavailable):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_error(request: Request, exc: StarletteHTTPException):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
@@ -98,6 +100,10 @@ async def unhandled_error(request: Request, exc: Exception):
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if (request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.cookies.get(SESSION_COOKIE)
+            and origin and origin not in _origins):
+        return JSONResponse(status_code=403, content={"detail": "Origem da requisição não autorizada"})
     response = await call_next(request)
     for key, value in SECURITY_HEADERS.items():
         response.headers.setdefault(key, value)
@@ -106,20 +112,18 @@ async def security_headers(request: Request, call_next):
 
 # CORS is restrictive by default: only the origins listed in CORS_ORIGINS.
 # In production, "*" is refused when credentials are enabled — force explicit origins.
-_origins_raw = os.environ.get("CORS_ORIGINS", "*")
+_origins_raw = os.environ.get("CORS_ORIGINS", "http://localhost,http://localhost:3000")
 _origins = [o.strip() for o in _origins_raw.split(",") if o.strip()]
 _wildcard = _origins == ["*"]
 
-if IS_PRODUCTION and _wildcard:
-    logger.warning(
-        "CORS_ORIGINS is '*' in production. Set CORS_ORIGINS to a comma-separated list of origins."
-    )
+if "*" in _origins:
+    raise RuntimeError("CORS_ORIGINS must explicitly list allowed origins in production")
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[] if _wildcard else _origins,
-    allow_origin_regex=".*" if _wildcard else None,
+    allow_origins=_origins,
+    allow_origin_regex=None,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )

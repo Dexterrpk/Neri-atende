@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft, BadgeCheck, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Logo, NeriCredit } from "@/components/Brand";
@@ -304,4 +304,28 @@ export function ForgotPassword() {
       )}
     </AuthLayout>
   );
+}
+
+
+export function AccountToken({ verify = false }: { verify?: boolean }) {
+  const [params] = useSearchParams();
+  const [password, setPassword] = useState("");
+  const [done, setDone] = useState(false);
+  const token = params.get("token") || "";
+  const action = useMutation({
+    mutationFn: () => apiPost<Ok>(verify ? "/auth/verify-email/confirm" : "/auth/reset-password",
+      verify ? { token } : { token, password }),
+    onSuccess: result => { setDone(true); toast.success(result.message); },
+    onError: err => toast.error(apiErrorMessage(err)),
+  });
+  return <AuthLayout title={verify ? "Confirmar e-mail" : "Criar nova senha"} subtitle="Conclua a solicitação da sua conta.">
+    {done ? <Link to="/login" className="text-primary">Continuar para o login</Link> :
+      <form className="space-y-4" onSubmit={e => { e.preventDefault(); action.mutate(); }}>
+        {!verify && <div className="space-y-2"><Label htmlFor="new-password">Nova senha</Label>
+          <Input id="new-password" type="password" autoComplete="new-password" minLength={8} required
+            value={password} onChange={e => setPassword(e.target.value)} /></div>}
+        <Button type="submit" disabled={!token || action.isPending}>{verify ? "Confirmar e-mail" : "Salvar nova senha"}</Button>
+        {!token && <p>Link inválido. Solicite um novo e-mail.</p>}
+      </form>}
+  </AuthLayout>;
 }

@@ -45,6 +45,7 @@ export default function Conversations() {
     queryKey: ["conversations", filter],
     queryFn: () => apiGet<Conversation[]>(`/conversations${filter ? `?status=${filter}` : ""}`),
     retry: false,
+    refetchInterval: 3000,
   });
 
   const active = conversations?.find((c) => c.id === activeId) ?? null;
@@ -54,6 +55,7 @@ export default function Conversations() {
     queryFn: () => apiGet<Message[]>(`/conversations/${activeId}/messages`),
     enabled: Boolean(activeId),
     retry: false,
+    refetchInterval: 3000,
   });
 
   const reply = useMutation({
@@ -63,7 +65,7 @@ export default function Conversations() {
       invalidate("messages", "conversations");
       toast.success("Mensagem enviada. A IA parou de responder nesta conversa.");
     },
-    onError: (err) => toast.error(apiErrorMessage(err)),
+    onError: (err) => { toast.error(apiErrorMessage(err)); invalidate("messages", "conversations"); },
   });
 
   const simulate = useMutation({
@@ -270,6 +272,9 @@ export default function Conversations() {
                             {m.role === "customer" ? m.author || "Cliente" : m.role === "ai" ? m.author || "IA" : m.author || "Atendente"}
                           </p>
                           <p className="whitespace-pre-line text-sm leading-relaxed">{m.content}</p>
+                          {m.delivery_status === "failed" && <p className="mt-1 text-xs text-red-700">Não enviada: {m.delivery_error}</p>}
+                          {m.delivery_status === "pending" && <p className="mt-1 text-xs">Envio pendente</p>}
+                          {m.delivery_status === "accepted" && <p className="mt-1 text-xs opacity-60">Aceita pelo WhatsApp</p>}
                           <p className="mt-1 text-right text-[0.65rem] opacity-60">{time(m.created_at)}</p>
                         </div>
                       </div>

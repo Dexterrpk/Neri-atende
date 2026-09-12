@@ -18,9 +18,9 @@ from lib.security import hash_password
 from models.schemas import AgentConfig, Customer, KnowledgeItem, Product, RecoveryRules
 
 ADMIN_EMAIL = os.environ.get("PLATFORM_ADMIN_EMAIL", "admin@atendeia.com")
-ADMIN_PASSWORD = os.environ.get("PLATFORM_ADMIN_PASSWORD", "AtendeIA#2026")
+ADMIN_PASSWORD = os.environ.get("PLATFORM_ADMIN_PASSWORD", "")
 DEMO_EMAIL = os.environ.get("DEMO_OWNER_EMAIL", "demo@atendeia.com")
-DEMO_PASSWORD = os.environ.get("DEMO_OWNER_PASSWORD", "Demo#2026forte")
+DEMO_PASSWORD = os.environ.get("DEMO_OWNER_PASSWORD", "")
 
 
 def now() -> datetime:
@@ -49,6 +49,8 @@ async def upsert_user(email: str, password: str, name: str, company_id: str,
     if existing:
         print(f"  = usuário já existe, preservado: {email}")
         return existing
+    if len(password) < 12:
+        raise RuntimeError("Configure uma senha inicial de pelo menos 12 caracteres")
     doc = {
         "id": str(uuid.uuid4()), "company_id": company_id, "name": name, "email": email,
         "password_hash": hash_password(password), "role": role,
@@ -70,8 +72,15 @@ async def main() -> None:
         segment="Tecnologia", plan="PREMIUM",
         description="Empresa operadora da plataforma Atende IA.",
     )
-    await upsert_user(ADMIN_EMAIL, ADMIN_PASSWORD, "Administrador da Plataforma",
-                      platform_company["id"], "OWNER", platform_admin=True)
+    if ADMIN_PASSWORD or await db.users.find_one({"email": ADMIN_EMAIL}):
+        await upsert_user(ADMIN_EMAIL, ADMIN_PASSWORD, "Administrador da Plataforma",
+                          platform_company["id"], "OWNER", platform_admin=True)
+    else:
+        print("Admin inicial não criado: configure PLATFORM_ADMIN_PASSWORD e execute seed.py.")
+    if os.environ.get("SEED_DEMO", "false").lower() != "true":
+        return
+    if len(DEMO_PASSWORD) < 12:
+        raise RuntimeError("Configure DEMO_OWNER_PASSWORD para habilitar SEED_DEMO")
 
     # --- demo tenant, fully isolated from the one above ---
     demo = await upsert_company(
@@ -99,8 +108,9 @@ async def main() -> None:
 
     # demo AI personality
     await db.agent_configs.update_one(
-        {"company_id": demo["id"]},
+        {"company_id": demo["id"], "demo_personality_initialized": {"$ne": True}},
         {"$set": {
+            "demo_personality_initialized": True,
             "ai_name": "Bella",
             "tone": "amigavel",
             "personality": "consultiva",

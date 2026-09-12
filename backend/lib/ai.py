@@ -205,7 +205,7 @@ async def _call_openai_compatible(base_url: str | None, api_key: str, model: str
                                   max_tokens: int, temperature: float) -> str:
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url) if base_url else AsyncOpenAI(api_key=api_key)
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=20, max_retries=0) if base_url else AsyncOpenAI(api_key=api_key, timeout=20, max_retries=0)
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
     for turn in (history or [])[-20:]:
         role = "user" if turn.get("role") == "customer" else "assistant"
@@ -223,7 +223,7 @@ async def _call_anthropic(api_key: str, model: str, system_prompt: str, message:
                           history: list[dict] | None, max_tokens: int, temperature: float) -> str:
     from anthropic import AsyncAnthropic
 
-    client = AsyncAnthropic(api_key=api_key)
+    client = AsyncAnthropic(api_key=api_key, timeout=20, max_retries=0)
     msgs: list[dict] = []
     for turn in (history or [])[-20:]:
         role = "user" if turn.get("role") == "customer" else "assistant"
@@ -240,27 +240,22 @@ async def _call_anthropic(api_key: str, model: str, system_prompt: str, message:
 
 async def _call_gemini(api_key: str, model: str, system_prompt: str, message: str,
                        history: list[dict] | None, max_tokens: int, temperature: float) -> str:
-    import asyncio
+    import httpx
+    from urllib.parse import quote
 
-    import google.generativeai as genai
-
-    def _sync() -> str:
-        genai.configure(api_key=api_key)
-        gm = genai.GenerativeModel(
-            model_name=model, system_instruction=system_prompt,
-            generation_config={"max_output_tokens": max_tokens, "temperature": temperature},
-        )
-        contents: list[dict] = []
-        for turn in (history or [])[-20:]:
-            role = "user" if turn.get("role") == "customer" else "model"
-            content = str(turn.get("content", ""))[:2000]
-            if content:
-                contents.append({"role": role, "parts": [content]})
-        contents.append({"role": "user", "parts": [message]})
-        resp = gm.generate_content(contents)
-        return (getattr(resp, "text", "") or "").strip()
-
-    return await asyncio.to_thread(_sync)
+    contents = [{"role": "user" if t.get("role") == "customer" else "model",
+                 "parts": [{"text": str(t.get("content", ""))[:2000]}]} for t in (history or [])[-20:]]
+    contents.append({"role": "user", "parts": [{"text": message}]})
+    # Per-request credentials: no process-global genai.configure shared across callers.
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{quote(model.removeprefix('models/'), safe='')}:generateContent",
+            headers={"x-goog-api-key": api_key},
+            json={"systemInstruction": {"parts": [{"text": system_prompt}]}, "contents": contents,
+                  "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature}})
+        response.raise_for_status()
+        candidates = response.json().get("candidates") or []
+        return "".join(p.get("text", "") for p in (candidates[0].get("content", {}).get("parts", []) if candidates else [])).strip()
 
 
 async def _dispatch(provider: str, api_key: str, model: str,
@@ -306,7 +301,7 @@ async def probe_key(provider: str, api_key: str, model: str | None = None) -> tu
         if looks_like_model_gone:
             try:
                 catalog = await list_provider_models(provider, api_key)
-                for candidate in catalog:
+                for candidate in catalog[:8]:
                     if not candidate or candidate == mdl:
                         continue
                     if any(h in candidate.lower() for h in _NON_CHAT_HINTS):
@@ -330,24 +325,22 @@ async def list_provider_models(provider: str, api_key: str) -> list[str]:
             from openai import AsyncOpenAI
 
             base = OPENAI_COMPATIBLE_BASE_URLS[provider]
-            client = AsyncOpenAI(api_key=api_key, base_url=base) if base else AsyncOpenAI(api_key=api_key)
+            client = AsyncOpenAI(api_key=api_key, base_url=base, timeout=20, max_retries=0) if base else AsyncOpenAI(api_key=api_key, timeout=20, max_retries=0)
             resp = await client.models.list()
             return sorted({m.id for m in resp.data})
         if provider == "anthropic":
-            return [
-                "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest",
-                "claude-3-opus-latest", "claude-3-haiku-20240307",
-            ]
+            from anthropic import AsyncAnthropic
+            async with AsyncAnthropic(api_key=api_key, timeout=20, max_retries=0) as client:
+                page = await client.models.list(limit=50)
+                return sorted(m.id for m in page.data)
         if provider == "gemini":
-            import asyncio
-
-            import google.generativeai as genai
-
-            def _list() -> list[str]:
-                genai.configure(api_key=api_key)
-                return sorted({m.name.replace("models/", "") for m in genai.list_models()
-                               if "generateContent" in getattr(m, "supported_generation_methods", [])})
-            return await asyncio.to_thread(_list)
+            import httpx
+            async with httpx.AsyncClient(timeout=20) as client:
+                response = await client.get("https://generativelanguage.googleapis.com/v1beta/models",
+                                            headers={"x-goog-api-key": api_key})
+                response.raise_for_status()
+                return sorted(m["name"].removeprefix("models/") for m in response.json().get("models", [])
+                              if "generateContent" in m.get("supportedGenerationMethods", []))
     except Exception as exc:
         logger.warning("model discovery failed for %s: %s", provider, type(exc).__name__)
     return [DEFAULT_MODELS.get(provider, "")]
@@ -432,12 +425,17 @@ async def generate(
     kind: str = "chat",
     model_tier: str = "default",
 ) -> tuple[str, str, str]:
-    """Returns (reply, provider, model). Never raises; degrades to test mode."""
+    """Returns (reply, provider, model); raises AiUnavailable on quota exhaustion."""
     cfg = await get_provider_config()
     max_tokens = int(cfg.get("max_tokens") or 1200)
     temperature = float(cfg.get("temperature") or 0.6)
 
     chain = await _build_attempt_chain(cfg)
+    if company_id and int(cfg.get("monthly_call_limit") or 0) > 0:
+        month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        used = await db.ai_usage.count_documents({"company_id": company_id, "created_at": {"$gte": month_start}})
+        if used >= int(cfg["monthly_call_limit"]):
+            raise AiUnavailable("Limite mensal de IA atingido")
     if not chain:
         return _mock_reply(system_prompt, message), "test", "mock"
 

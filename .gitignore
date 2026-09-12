@@ -44,11 +44,16 @@ build/
 dist/
 
 # --- platform / infra ---
-.emergent/
 downloads/
 tmp/
 tests-cache/
 .env.*
+!.env.example
+!backend/.env.example
 *.env
 credentials.json
 .credentials
+
+# Secret stores
+secrets/
+credentials/

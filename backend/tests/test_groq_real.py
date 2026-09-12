@@ -16,9 +16,9 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8001")
 API = f"{BACKEND_URL}/api"
 
 ADMIN_EMAIL = "admin@atendeia.com"
-ADMIN_PASS = "AtendeIA#2026"
+ADMIN_PASS = os.environ.get("PLATFORM_ADMIN_PASSWORD", "")
 DEMO_EMAIL = "demo@atendeia.com"
-DEMO_PASS = "Demo#2026forte"
+DEMO_PASS = os.environ.get("DEMO_OWNER_PASSWORD", "")
 
 GROQ_KEY = os.environ.get("GROQ_TEST_KEY", "")
 _requires_real_key = pytest.mark.skipif(
@@ -39,18 +39,13 @@ def _login(email: str, password: str) -> httpx.Client:
 @pytest.fixture(scope="module")
 def admin_client():
     c = _login(ADMIN_EMAIL, ADMIN_PASS)
-    # Cleanup any prior credentials
-    try:
-        for cred in c.get("/admin/ai/credentials").json():
-            c.delete(f"/admin/ai/credentials/{cred['id']}")
-    except Exception:
-        pass
+    # These tests require a disposable backend. Never delete pre-existing credentials.
+    existing = c.get("/admin/ai/credentials")
+    assert existing.status_code == 200 and existing.json() == [], "Use a clean, isolated test database"
     yield c
-    try:
-        for cred in c.get("/admin/ai/credentials").json():
-            c.delete(f"/admin/ai/credentials/{cred['id']}")
-    except Exception:
-        pass
+    cid = getattr(pytest, "cred_id", None) or getattr(pytest, "groq_cred_id", None)
+    if cid:
+        c.delete(f"/admin/ai/credentials/{cid}")
     c.close()
 
 
@@ -168,9 +163,6 @@ def test_supervisor_logs_never_contain_key():
 @_requires_real_key
 def test_real_key_not_in_test_files():
     """Prevents accidental hardcoding of the REAL Groq key in test sources."""
-    result = subprocess.run(
-        ["grep", "-r", "-l", "--include=*.py", GROQ_KEY, "/app/backend/tests/"],
-        capture_output=True, text=True,
-    )
-    matches = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    from pathlib import Path
+    matches = [str(p) for p in Path(__file__).parent.glob("*.py") if GROQ_KEY in p.read_text(encoding="utf-8")]
     assert not matches, f"REAL key found literally in: {matches}"

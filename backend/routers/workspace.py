@@ -2,6 +2,7 @@
 dashboard, appointments, usage. Every query is scoped by principal.tenant()."""
 
 from datetime import datetime, timedelta, timezone
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -90,7 +91,8 @@ async def load_config(company_id: str) -> dict:
     doc = await db.agent_configs.find_one({"company_id": company_id})
     if not doc:
         doc = AgentConfig(company_id=company_id).model_dump()
-        await db.agent_configs.insert_one(dict(doc))
+        await db.agent_configs.update_one({"company_id": company_id}, {"$setOnInsert": dict(doc)}, upsert=True)
+        doc = await db.agent_configs.find_one({"company_id": company_id})
     doc.pop("_id", None)
     return doc
 
@@ -194,7 +196,7 @@ async def list_customers(principal: Principal = Depends(current_principal),
                          limit: int = Query(50, ge=1, le=200), skip: int = Query(0, ge=0)):
     query = principal.tenant()
     if search:
-        safe = search.strip()[:60]
+        safe = re.escape(search.strip()[:60])
         query["$or"] = [
             {"name": {"$regex": safe, "$options": "i"}},
             {"phone": {"$regex": safe, "$options": "i"}},

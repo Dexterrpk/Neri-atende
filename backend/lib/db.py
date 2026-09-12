@@ -11,7 +11,7 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
 db = client[os.environ["DB_NAME"]]
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,9 @@ INDEXES: dict[str, list[IndexModel]] = {
     ],
     "conversations": [
         IndexModel([("id", ASCENDING)], name="id", unique=True),
+        IndexModel([("company_id", ASCENDING), ("customer_id", ASCENDING)],
+                   name="one_open_customer", unique=True,
+                   partialFilterExpression={"status": {"$in": ["novo", "em_atendimento", "aguardando_cliente", "precisa_humano"]}}),
         IndexModel([("company_id", ASCENDING), ("last_message_at", DESCENDING)], name="company_last"),
         IndexModel([("company_id", ASCENDING), ("status", ASCENDING)], name="company_status"),
     ],
@@ -74,6 +77,8 @@ INDEXES: dict[str, list[IndexModel]] = {
     ],
     "integrations": [
         IndexModel([("company_id", ASCENDING), ("kind", ASCENDING)], name="company_kind", unique=True),
+        IndexModel([("phone_number_id", ASCENDING)], name="official_phone_owner", unique=True,
+                   partialFilterExpression={"kind": "whatsapp", "mode": "official", "phone_number_id": {"$type": "string"}}),
     ],
     "audit_logs": [
         IndexModel([("company_id", ASCENDING), ("created_at", DESCENDING)], name="company_created"),
@@ -98,5 +103,6 @@ async def ensure_indexes() -> None:
         for model in models:  # one at a time so a bad spec skips only itself
             try:
                 await db[collection].create_indexes([model])
-            except Exception as exc:  # never block boot on an index
-                logger.error("ensure_indexes(%s.%s): %s", collection, model.document["name"], exc)
+            except Exception:
+                logger.error("Required index failed: %s.%s", collection, model.document["name"])
+                raise  # Starting without uniqueness silently breaks tenant/message guarantees.

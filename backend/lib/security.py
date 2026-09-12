@@ -15,8 +15,11 @@ from datetime import datetime, timedelta, timezone
 from cryptography.fernet import Fernet, InvalidToken
 
 # --- master key (environment only) -------------------------------------------------
-APP_SECRET = os.environ.get("APP_SECRET") or "dev-only-insecure-secret-change-me"
 IS_PRODUCTION = os.environ.get("APP_ENV", "development").lower() == "production"
+APP_SECRET = os.environ.get("APP_SECRET", "")
+INSECURE_APP_SECRET = ""
+if len(APP_SECRET) < 32:
+    raise RuntimeError("APP_SECRET must be configured with at least 32 random characters")
 
 _fernet = Fernet(base64.urlsafe_b64encode(hashlib.sha256(APP_SECRET.encode()).digest()))
 
@@ -61,7 +64,7 @@ def cookie_kwargs() -> dict:
     """HttpOnly always; Secure + SameSite=Lax since the app is served same-origin over HTTPS."""
     return {
         "httponly": True,
-        "secure": True,
+        "secure": IS_PRODUCTION,
         "samesite": "lax",
         "path": "/",
         "max_age": SESSION_TTL_DAYS * 24 * 3600,

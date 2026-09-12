@@ -1,0 +1,8 @@
+{$APP_DOMAIN} {
+    handle /api/* {
+        reverse_proxy backend:8001
+    }
+    handle {
+        reverse_proxy frontend:80
+    }
+}
